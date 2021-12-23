@@ -148,11 +148,11 @@ def cal_attends2neighbors(edge_point_set, dis_model='L1'):
         return:
         atten_ceof: (num_points, 1, k_neighbors)
     """
-    square_edges = tf.square(edge_point_set)            # (num_points, k_neighbors, dim2point)
-    norm2edges = tf.reduce_sum(square_edges, axis=-1)   # (num_points, k_neighbors)
+    square_edges = tf.square(edge_point_set)                  # (num_points, k_neighbors, dim2point)
+    norm2edges = tf.reduce_sum(square_edges, axis=-1)         # (num_points, k_neighbors)
     if str.lower(dis_model) == 'l1':
         norm2edges = tf.sqrt(norm2edges)
-    exp_dis = tf.exp(-norm2edges)                   # (num_points, k_neighbors)
+    exp_dis = tf.exp(-norm2edges)                             # (num_points, k_neighbors)
     normalize_exp_dis = tf.nn.softmax(exp_dis, axis=-1)
     atten_ceof = tf.expand_dims(normalize_exp_dis, axis=-2)   # (num_points, 1, k_neighbors)
     return atten_ceof
@@ -166,12 +166,12 @@ def cal_edgesNorm_attends2neighbors(edge_point_set, dis_model='L1'):
         return:
         atten_ceof: (num_points, 1, k_neighbors)
     """
-    square_edges = tf.square(edge_point_set)            # (num_points, k_neighbors, dim2point)
+    square_edges = tf.square(edge_point_set)                           # (num_points, k_neighbors, dim2point)
     norm2edges = tf.reduce_sum(square_edges, axis=-1, keepdims=True)   # (num_points, k_neighbors)
     if str.lower(dis_model) == 'l1':
         norm2edges = tf.sqrt(norm2edges)
     normalize_edgeNrom = tf.nn.softmax(norm2edges, axis=1)
-    exp_dis = tf.exp(-norm2edges)                   # (num_points, k_neighbors)
+    exp_dis = tf.exp(-norm2edges)                                      # (num_points, k_neighbors)
     normalize_exp_dis = tf.nn.softmax(exp_dis, axis=1)
     atten_ceof = tf.transpose(normalize_exp_dis, perm=[0, 2, 1])
     return normalize_edgeNrom, atten_ceof
@@ -353,7 +353,7 @@ class Dense_Net(object):
         self.Bs = []
         with tf.compat.v1.variable_scope('WB_scope', reuse=tf.compat.v1.AUTO_REUSE):
             if str.lower(self.name2Model) == 'fourier_dnn':
-                stddev_WB = (2.0 / (indim + hidden_units[0])) ** 0.5
+                stddev_WB = (2.0 / (indim + hidden_units[0])) ** varcoe
                 Win = tf.compat.v1.get_variable(
                     name=str(scope2W) + '_in', shape=(indim, hidden_units[0]),
                     initializer=tf.random_normal_initializer(stddev=stddev_WB), trainable=True, dtype=self.float_type)
@@ -363,7 +363,7 @@ class Dense_Net(object):
                 self.Ws.append(Win)
                 self.Bs.append(Bin)
                 for i_layer in range(len(hidden_units)-1):
-                    stddev_WB = (2.0 / (hidden_units[i_layer] + hidden_units[i_layer + 1])) ** 0.5
+                    stddev_WB = (2.0 / (hidden_units[i_layer] + hidden_units[i_layer + 1])) ** varcoe
                     if i_layer == 0:
                         W = tf.compat.v1.get_variable(
                             name=str(scope2W)+str(i_layer), shape=(hidden_units[i_layer]*2, hidden_units[i_layer + 1]),
@@ -385,7 +385,7 @@ class Dense_Net(object):
                     self.Ws.append(W)
                     self.Bs.append(B)
             else:
-                stddev_WB = (2.0 / (indim + hidden_units[0])) ** 0.5
+                stddev_WB = (2.0 / (indim + hidden_units[0])) ** varcoe
                 Win = tf.compat.v1.get_variable(
                     name=str(scope2W) + '_in', shape=(indim, hidden_units[0]),
                     initializer=tf.random_normal_initializer(stddev=stddev_WB), trainable=True, dtype=self.float_type)
@@ -547,7 +547,7 @@ class Pure_Dense_Net(object):
             self.float_type = tf.float16
 
         with tf.compat.v1.variable_scope('WB_scope', reuse=tf.compat.v1.AUTO_REUSE):
-            stddev_WB = (2.0 / (indim + hidden_units[0])) ** 0.5
+            stddev_WB = (2.0 / (indim + hidden_units[0])) ** varcoe
             Win = tf.compat.v1.get_variable(name=str(scope2W) + '_in', shape=(indim, hidden_units[0]),
                                             initializer=tf.random_normal_initializer(stddev=stddev_WB), trainable=True,
                                             dtype=self.float_type)
@@ -557,7 +557,7 @@ class Pure_Dense_Net(object):
             self.Ws.append(Win)
             self.Bs.append(Bin)
             for i_layer in range(len(hidden_units) - 1):
-                stddev_WB = (2.0 / (hidden_units[i_layer] + hidden_units[i_layer + 1])) ** 0.5
+                stddev_WB = (2.0 / (hidden_units[i_layer] + hidden_units[i_layer + 1])) ** varcoe
                 W = tf.compat.v1.get_variable(
                     name=str(scope2W) + str(i_layer), shape=(hidden_units[i_layer], hidden_units[i_layer + 1]),
                     initializer=tf.random_normal_initializer(stddev=stddev_WB), trainable=True,
@@ -667,7 +667,7 @@ class Dense_ScaleNet(object):
             self.float_type = tf.float16
 
         with tf.compat.v1.variable_scope('WB_scope', reuse=tf.compat.v1.AUTO_REUSE):
-            stddev_WB = (2.0 / (indim + hidden_units[0])) ** 0.5
+            stddev_WB = (2.0 / (indim + hidden_units[0])) ** varcoe
             Win = tf.compat.v1.get_variable(name=str(scope2W) + '_in', shape=(indim, hidden_units[0]),
                                             initializer=tf.random_normal_initializer(stddev=stddev_WB), trainable=True,
                                             dtype=self.float_type)
@@ -677,7 +677,7 @@ class Dense_ScaleNet(object):
             self.Ws.append(Win)
             self.Bs.append(Bin)
             for i_layer in range(len(hidden_units) - 1):
-                stddev_WB = (2.0 / (hidden_units[i_layer] + hidden_units[i_layer + 1])) ** 0.5
+                stddev_WB = (2.0 / (hidden_units[i_layer] + hidden_units[i_layer + 1])) ** varcoe
                 W = tf.compat.v1.get_variable(
                     name=str(scope2W) + str(i_layer), shape=(hidden_units[i_layer], hidden_units[i_layer + 1]),
                     initializer=tf.random_normal_initializer(stddev=stddev_WB), trainable=True, dtype=self.float_type)
@@ -763,7 +763,7 @@ class Dense_ScaleNet(object):
         return out_result
 
 
-class Dense_Fourier_Net(object):
+class Dense_FourierNet(object):
     """
     Args:
         indim: the dimension for input data
@@ -781,7 +781,7 @@ class Dense_Fourier_Net(object):
     def __init__(self, indim=1, outdim=1, hidden_units=None, name2Model='DNN', actName2in='tanh', actName='tanh',
                  actName2out='linear', scope2W='Weight', scope2B='Bias', repeat_high_freq=True, type2float='float32',
                  varcoe=0.5):
-        super(Dense_Fourier_Net, self).__init__()
+        super(Dense_FourierNet, self).__init__()
         self.indim = indim
         self.outdim = outdim
         self.hidden_units = hidden_units
@@ -802,7 +802,7 @@ class Dense_Fourier_Net(object):
             self.float_type = tf.float16
 
         with tf.compat.v1.variable_scope('WB_scope', reuse=tf.compat.v1.AUTO_REUSE):
-            stddev_WB = (2.0 / (indim + hidden_units[0])) ** 0.5
+            stddev_WB = (2.0 / (indim + hidden_units[0])) ** varcoe
             Win = tf.compat.v1.get_variable(
                 name=str(scope2W) + '_in', shape=(indim, hidden_units[0]),
                 initializer=tf.random_normal_initializer(stddev=stddev_WB), trainable=True, dtype=self.float_type)
@@ -812,7 +812,7 @@ class Dense_Fourier_Net(object):
             self.Ws.append(Win)
             self.Bs.append(Bin)
             for i_layer in range(len(hidden_units)-1):
-                stddev_WB = (2.0 / (hidden_units[i_layer] + hidden_units[i_layer + 1])) ** 0.5
+                stddev_WB = (2.0 / (hidden_units[i_layer] + hidden_units[i_layer + 1])) ** varcoe
                 if i_layer == 0:
                     W = tf.compat.v1.get_variable(
                         name=str(scope2W) + str(i_layer), shape=(hidden_units[i_layer] * 2, hidden_units[i_layer + 1]),
