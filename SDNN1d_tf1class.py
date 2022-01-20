@@ -413,7 +413,7 @@ def solve_Multiscale_PDE(R):
             in_dim=input_dim, out_dim=out_dim, region_a=region_l, region_b=region_r, index2p=p_index, eps=epsilon,
             eqs_name=R['equa_name'])
 
-    sd2nn = SD2NN(input_dim=R['input_dim'], out_dim=1, hidden2Normal=R['hidden2normal'], hidden2Scale=R['hidden2scale'],
+    model = SD2NN(input_dim=R['input_dim'], out_dim=1, hidden2Normal=R['hidden2normal'], hidden2Scale=R['hidden2scale'],
                   Model_name2Normal=R['model2Normal'], Model_name2Scale=R['model2Scale'],
                   actIn_name2Normal=R['actHidden_name2Normal'], actHidden_name2Normal=R['actHidden_name2Normal'],
                   actOut_name2Normal='linear', actIn_name2Scale=R['actHidden_name2Scale'],
@@ -431,34 +431,34 @@ def solve_Multiscale_PDE(R):
             in_learning_rate = tf.compat.v1.placeholder_with_default(input=1e-5, shape=[], name='lr')
 
             if R['PDE_type'] == 'general_Laplace':
-                UNN2train, Loss_it2NNs, UNN_dot_UNN = sd2nn.loss_it2Laplace(
+                UNN2train, Loss_it2NNs, UNN_dot_UNN = model.loss_it2Laplace(
                     X=X_it, fside=f, loss_type=R['loss_type'], alpha=using_scale2orthogonal,
                     opt2orthogonal=R['opt2orthogonal'], with_orthogonal=R['opt2loss_udotu'])
             elif R['PDE_type'] == 'pLaplace':
-                UNN2train, Loss_it2NNs, UNN_dot_UNN = sd2nn.loss_it2pLaplace(
+                UNN2train, Loss_it2NNs, UNN_dot_UNN = model.loss_it2pLaplace(
                     X=X_it, Aeps=A_eps, fside=f, loss_type=R['loss_type'], alpha=using_scale2orthogonal,
                     opt2orthogonal=R['opt2orthogonal'], with_orthogonal=R['opt2loss_udotu'])
             elif R['PDE_type'] == 'Possion_Boltzmann':
-                UNN2train, Loss_it2NNs, UNN_dot_UNN = sd2nn.loss_it2Possion_Boltzmann()
+                UNN2train, Loss_it2NNs, UNN_dot_UNN = model.loss_it2Possion_Boltzmann()
 
             Loss2UNN_dot_UNN = UdotU_penalty * UNN_dot_UNN
 
             if R['opt2loss_bd'] == 'unified_boundary':
-                loss_bd2left = sd2nn.loss_bd2NormalAddScale(X_left, Ubd_exact=u_left, alpha=R['contrib2scale'])
-                loss_bd2right = sd2nn.loss_bd2NormalAddScale(X_right, Ubd_exact=u_right, alpha=R['contrib2scale'])
+                loss_bd2left = model.loss_bd2NormalAddScale(X_left, Ubd_exact=u_left, alpha=R['contrib2scale'])
+                loss_bd2right = model.loss_bd2NormalAddScale(X_right, Ubd_exact=u_right, alpha=R['contrib2scale'])
                 Loss_bd2NNs = bd_penalty * (loss_bd2left + loss_bd2right)
             else:
-                loss_bd2Normal_left = sd2nn.loss2Normal_bd(X_left, Ubd_exact=u_left)
-                loss_bd2Normal_right = sd2nn.loss2Normal_bd(X_right, Ubd_exact=u_right)
+                loss_bd2Normal_left = model.loss2Normal_bd(X_left, Ubd_exact=u_left)
+                loss_bd2Normal_right = model.loss2Normal_bd(X_right, Ubd_exact=u_right)
                 loss_bd2Normal = loss_bd2Normal_left + loss_bd2Normal_right
 
-                loss_bd2Scale_left = sd2nn.loss2Scale_bd(X_left, alpha=using_scale2boundary)
-                loss_bd2Scale_right = sd2nn.loss2Scale_bd(X_right, alpha=using_scale2boundary)
+                loss_bd2Scale_left = model.loss2Scale_bd(X_left, alpha=using_scale2boundary)
+                loss_bd2Scale_right = model.loss2Scale_bd(X_right, alpha=using_scale2boundary)
                 loss_bd2Scale = loss_bd2Scale_left + loss_bd2Scale_right
 
                 Loss_bd2NNs = bd_penalty*(loss_bd2Normal + loss_bd2Scale)
 
-            regularSum2WB = sd2nn.get_regularSum2WB()
+            regularSum2WB = model.get_regularSum2WB()
             PWB = penalty2WB * regularSum2WB
 
             Loss2NN = Loss_it2NNs + Loss_bd2NNs + Loss2UNN_dot_UNN + PWB
@@ -506,7 +506,7 @@ def solve_Multiscale_PDE(R):
             train_mse_NN = tf.reduce_mean(tf.square(U_true - UNN2train))
             train_rel_NN = train_mse_NN / tf.reduce_mean(tf.square(U_true))
 
-            UNN_Normal2test, UNN_Scale2test, UNN2test = sd2nn.evalue_MscaleDNN(X_points=X_it, alpha=R['contrib2scale'])
+            UNN_Normal2test, UNN_Scale2test, UNN2test = model.evalue_MscaleDNN(X_points=X_it, alpha=R['contrib2scale'])
 
     t0 = time.time()
     loss_it_all, loss_bd_all, loss_all, loss_udu_all, train_mse_all, train_rel_all = [], [], [], [], [], []
