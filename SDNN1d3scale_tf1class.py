@@ -363,20 +363,6 @@ def solve_Multiscale_PDE(R):
     act_func2Normal = R['actHidden_name2Normal']
     act_func2Scale = R['actHidden_name2Scale']
 
-    if R['contrib_scale2orthogonal'] == 'with_contrib':
-        using_scale1_orthogonal = R['contrib2scale1']
-        using_scale2_orthogonal = R['contrib2scale2']
-    else:
-        using_scale1_orthogonal = 1.0
-        using_scale2_orthogonal = 1.0
-
-    if R['opt2loss_bd'] != 'unified_boundary' and R['contrib_scale2boundary'] == 'with_contrib':
-        using_scale1_boundary = R['contrib2scale1']
-        using_scale2_boundary = R['contrib2scale2']
-    else:
-        using_scale1_boundary = 1.0
-        using_scale2_boundary = 1.0
-
     region_l = 0.0
     region_r = 1.0
     if R['PDE_type'] == 'pLaplace':
@@ -426,13 +412,13 @@ def solve_Multiscale_PDE(R):
 
             if R['PDE_type'] == 'general_Laplace':
                 UNN2train, Loss_it2NNs, UNN_dot_UNN = sd2nn.loss_it2Laplace(
-                    X=X_it, fside=f, loss_type=R['loss_type'], alpha1=using_scale1_orthogonal,
-                    alpha2=using_scale2_orthogonal, opt2orthogonal=R['opt2orthogonal'])
+                    X=X_it, fside=f, loss_type=R['loss_type'], alpha1=R['contrib2scale1'], alpha2=R['contrib2scale2'],
+                    opt2orthogonal=R['opt2orthogonal'])
             elif R['PDE_type'] == 'pLaplace':
                 fx = MS_LaplaceEqs.force_sice_3scale2(X_it, eps1=R['epsilon1'], eps2=R['epsilon2'])
                 UNN2train, Loss_it2NNs, UNN_dot_UNN = sd2nn.loss_it2pLaplace(
                     X=X_it, Aeps=A_eps, fside=fx, if_lambda2fside=False, loss_type=R['loss_type'],
-                    alpha1=using_scale1_orthogonal, alpha2=using_scale2_orthogonal, opt2orthogonal=R['opt2orthogonal'])
+                    alpha1=R['contrib2scale1'], alpha2=R['contrib2scale2'], opt2orthogonal=R['opt2orthogonal'])
             elif R['PDE_type'] == 'Possion_Boltzmann':
                 UNN2train, Loss_it2NNs, UNN_dot_UNN = sd2nn.loss_it2Possion_Boltzmann()
 
@@ -452,12 +438,12 @@ def solve_Multiscale_PDE(R):
                 loss_bd2Normal_right = sd2nn.loss2Normal_bd(X_right, Ubd_exact=u_right)
                 loss_bd2Normal = loss_bd2Normal_left + loss_bd2Normal_right
 
-                loss_bd2Scale1_left = sd2nn.loss2Scale1_bd(X_left, alpha=using_scale1_boundary)
-                loss_bd2Scale1_right = sd2nn.loss2Scale1_bd(X_right, alpha=using_scale1_boundary)
+                loss_bd2Scale1_left = sd2nn.loss2Scale1_bd(X_left, alpha=R['contrib2scale1'])
+                loss_bd2Scale1_right = sd2nn.loss2Scale1_bd(X_right, alpha=R['contrib2scale1'])
                 loss_bd2Scale1 = loss_bd2Scale1_left + loss_bd2Scale1_right
 
-                loss_bd2Scale2_left = sd2nn.loss2Scale2_bd(X_left, alpha=using_scale2_boundary)
-                loss_bd2Scale2_right = sd2nn.loss2Scale2_bd(X_right, alpha=using_scale2_boundary)
+                loss_bd2Scale2_left = sd2nn.loss2Scale2_bd(X_left, alpha=R['contrib2scale2'])
+                loss_bd2Scale2_right = sd2nn.loss2Scale2_bd(X_right, alpha=R['contrib2scale2'])
                 loss_bd2Scale2 = loss_bd2Scale2_left + loss_bd2Scale2_right
 
                 Loss_bd2NNs = bd_penalty*(loss_bd2Normal + loss_bd2Scale1 + loss_bd2Scale2)
@@ -832,16 +818,7 @@ if __name__ == "__main__":
         # R['contrib2scale2'] = 0.008
 
     R['opt2loss_udotu'] = 'with_orthogonal'
-    # R['opt2loss_udotu'] = 'without_orthogonal'
-
-    # R['opt2loss_bd'] = 'unified_boundary'
-    R['opt2loss_bd'] = 'individual_boundary'
-
-    # R['contrib_scale2orthogonal'] = 'with_contrib'
-    R['contrib_scale2orthogonal'] = 'without_contrib'
-
-    # R['contrib_scale2boundary'] = 'with_contrib'
-    R['contrib_scale2boundary'] = 'without_contrib'
+    R['opt2loss_bd'] = 'unified_boundary'
 
     solve_Multiscale_PDE(R)
 

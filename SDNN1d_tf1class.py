@@ -27,8 +27,8 @@ class SD2NN(object):
     def __init__(self, input_dim=1, out_dim=1, hidden2Normal=None, hidden2Scale=None, Model_name2Normal='DNN',
                  Model_name2Scale='DNN', actIn_name2Normal='tanh', actHidden_name2Normal='tanh',
                  actOut_name2Normal='linear', actIn_name2Scale='tanh', actHidden_name2Scale='tanh',
-                 actOut_name2Scale='linear', opt2regular_WB='L2', type2numeric='float32', factor2low_freq=None,
-                 factor2high_freq=None):
+                 actOut_name2Scale='linear', opt2regular_WB='L2', type2numeric='float32', freq2Normal=None,
+                 freq2Scale=None):
         super(SD2NN, self).__init__()
         if 'DNN' == str.upper(Model_name2Normal):
             self.DNN2Normal = DNN_Class_base.Pure_Dense_Net(
@@ -41,7 +41,7 @@ class SD2NN(object):
                 actName2in=actIn_name2Normal, actName=actHidden_name2Normal, actName2out=actOut_name2Normal,
                 type2float=type2numeric, scope2W='W_Normal', scope2B='B_Normal', repeat_high_freq=False)
         elif 'FOURIER_DNN' == str.upper(Model_name2Normal):
-            self.DNN2Normal = DNN_Class_base.Dense_FourierNet(
+            self.DNN2Normal = DNN_Class_base.Dense_Fourier_Net(
                 indim=input_dim, outdim=out_dim, hidden_units=hidden2Normal, name2Model=Model_name2Normal,
                 actName2in=actIn_name2Normal, actName=actHidden_name2Normal, actName2out=actOut_name2Normal,
                 type2float=type2numeric, scope2W='W_Normal', scope2B='B_Normal', repeat_high_freq=False)
@@ -57,7 +57,7 @@ class SD2NN(object):
                 actName2in=actIn_name2Scale, actName=actHidden_name2Scale, actName2out=actOut_name2Scale,
                 type2float=type2numeric, scope2W='W_Scale', scope2B='B_Scale')
         elif 'FOURIER_DNN' == str.upper(Model_name2Scale):
-            self.DNN2Scale = DNN_Class_base.Dense_FourierNet(
+            self.DNN2Scale = DNN_Class_base.Dense_Fourier_Net(
                 indim=input_dim, outdim=out_dim, hidden_units=hidden2Scale, name2Model=Model_name2Scale,
                 actName2in=actIn_name2Scale, actName=actHidden_name2Scale, actName2out=actOut_name2Scale,
                 type2float=type2numeric, scope2W='W_Scale', scope2B='B_Scale')
@@ -69,12 +69,12 @@ class SD2NN(object):
         elif type2numeric == 'float16':
             self.float_type = tf.float16
 
-        self.factor2low_freq = factor2low_freq
-        self.factor2high_freq = factor2high_freq
+        self.freq2Normal = freq2Normal
+        self.freq2Scale = freq2Scale
         self.opt2regular_WB = opt2regular_WB
 
     def loss_it2Laplace(self, X=None, fside=None, if_lambda2fside=True, loss_type='ritz_loss', alpha=0.1,
-                        opt2use_orthogonal=True, opt2orthogonal=0):
+                        opt2orthogonal=1):
         assert (X is not None)
         assert (fside is not None)
 
@@ -88,8 +88,8 @@ class SD2NN(object):
         else:
             force_side = fside
 
-        UNN_Normal = self.DNN2Normal(X, scale=self.factor2low_freq)
-        UNN_Scale = self.DNN2Scale(X, scale=self.factor2high_freq)
+        UNN_Normal = self.DNN2Normal(X, scale=self.freq2Normal)
+        UNN_Scale = self.DNN2Scale(X, scale=self.freq2Scale)
 
         UNN = UNN_Normal + alpha * UNN_Scale
 
@@ -109,35 +109,28 @@ class SD2NN(object):
             square_loss_it = tf.square(loss_it_L2)
             loss_it = tf.reduce_mean(square_loss_it)
 
-        if opt2use_orthogonal == 'with_orthogonal':
-            if opt2orthogonal == 0:  # L2 正交
-                # |Uc*Uf|^2-->0; Uc 和 Uf 是两个列向量 形状为(*,1)
-                Un_dot_Us = tf.multiply(UNN_Normal, alpha * UNN_Scale)
-                UNN_dot_UNN = tf.square(tf.reduce_mean(Un_dot_Us))
-            elif opt2orthogonal == 1:   # 逐点平方正交 |Uc*Uf|^2-->0 Uc 和 Uf 是两个列向量 形状为(*, 1)
-                # |Uc*Uf|^2-->0; Uc 和 Uf 是两个列向量 形状为(*,1)
-                Un_dot_Us = tf.multiply(UNN_Normal, alpha * UNN_Scale)
-                square_Un_dot_Us = tf.square(Un_dot_Us)
-                UNN_dot_UNN = tf.reduce_mean(square_Un_dot_Us)
-            elif opt2orthogonal == 2:
-                # |(grad Uc)*(grad Uf)|^2-->0   (grad Uc)*(grad Uf)是向量相乘(*,2)·(*,2)
-                dU_dot_dU = tf.multiply(dUNN_Normal, alpha * dUNN_Scale)
-                sum2dUdU = tf.reshape(tf.reduce_sum(dU_dot_dU, axis=-1), shape=[-1, 1])
-                norm2AdUdU = tf.square(sum2dUdU)
-                UNN_dot_UNN = tf.reduce_mean(norm2AdUdU)
-            else:  # |Uc*Uf|^2-->0 + |(grad Uc)*(grad Uf)|^2-->0
-                U_dot_U = tf.reshape(tf.square(tf.multiply(UNN_Normal, alpha * UNN_Scale)), shape=[-1, 1])
-                dU_dot_dU = tf.multiply(dUNN_Normal, alpha * dUNN_Scale)
-                sum2dUdU = tf.reshape(tf.reduce_sum(dU_dot_dU, axis=-1), shape=[-1, 1])
-                norm2AdUdU = tf.square(sum2dUdU)
-                UNN_dot_UNN = tf.reduce_mean(norm2AdUdU) + tf.reduce_mean(U_dot_U)
-        else:
-            UNN_dot_UNN = tf.constant(0.0)
+        if opt2orthogonal == 1:
+            # |Uc*Uf|^2-->0; Uc 和 Uf 是两个列向量 形状为(*,1)
+            Un_dot_Us = tf.multiply(UNN_Normal, alpha * UNN_Scale)
+            square_Un_dot_Us = tf.square(Un_dot_Us)
+            UNN_dot_UNN = tf.reduce_mean(square_Un_dot_Us)
+        elif opt2orthogonal == 2:
+            # |(grad Uc)*(grad Uf)|^2-->0   (grad Uc)*(grad Uf)是向量相乘(*,2)·(*,2)
+            dU_dot_dU = tf.multiply(dUNN_Normal, alpha * dUNN_Scale)
+            sum2dUdU = tf.reshape(tf.reduce_sum(dU_dot_dU, axis=-1), shape=[-1, 1])
+            norm2AdUdU = tf.square(sum2dUdU)
+            UNN_dot_UNN = tf.reduce_mean(norm2AdUdU)
+        else:  # |Uc*Uf|^2-->0 + |(grad Uc)*(grad Uf)|^2-->0
+            U_dot_U = tf.reshape(tf.square(tf.multiply(UNN_Normal, alpha * UNN_Scale)), shape=[-1, 1])
+            dU_dot_dU = tf.multiply(dUNN_Normal, alpha * dUNN_Scale)
+            sum2dUdU = tf.reshape(tf.reduce_sum(dU_dot_dU, axis=-1), shape=[-1, 1])
+            norm2AdUdU = tf.square(sum2dUdU)
+            UNN_dot_UNN = tf.reduce_mean(norm2AdUdU) + tf.reduce_mean(U_dot_U)
 
         return UNN, loss_it, UNN_dot_UNN
 
     def loss_it2pLaplace(self, X=None, Aeps=None, if_lambda2Aeps=True, fside=None, if_lambda2fside=True,
-                         loss_type='ritz_loss', p_index=2, alpha=0.1, opt2use_orthogonal=True, opt2orthogonal=1):
+                         loss_type='ritz_loss', p_index=2, alpha=0.1, opt2orthogonal=1):
         assert (X is not None)
         assert (fside is not None)
         assert (Aeps is not None)
@@ -156,8 +149,8 @@ class SD2NN(object):
         else:
             force_side = fside
 
-        UNN_Normal = self.DNN2Normal(X, scale=self.factor2low_freq)
-        UNN_Scale = self.DNN2Scale(X, scale=self.factor2high_freq)
+        UNN_Normal = self.DNN2Normal(X, scale=self.freq2Normal)
+        UNN_Scale = self.DNN2Scale(X, scale=self.freq2Scale)
 
         UNN = UNN_Normal + alpha * UNN_Scale
 
@@ -171,43 +164,30 @@ class SD2NN(object):
             AdUNN_pNorm = tf.multiply(a_eps, tf.pow(dUNN_Norm, p_index))
             loss_it_ritz = (1.0/p_index)*AdUNN_pNorm-tf.multiply(tf.reshape(force_side, shape=[-1, 1]), UNN)
             loss_it = tf.reduce_mean(loss_it_ritz)
-        elif str.lower(loss_type) == 'l2_loss':
-            ddUNN_Normal = tf.gradients(dUNN_Normal, X)[0]
-            ddUNN_Scale = tf.gradients(dUNN_Scale, X)[0]
-            loss_it_L2 = ddUNN_Normal + alpha * ddUNN_Scale + tf.reshape(force_side, shape=[-1, 1])
-            square_loss_it = tf.square(loss_it_L2)
-            loss_it = tf.reduce_mean(square_loss_it)
 
-        if opt2use_orthogonal == 'with_orthogonal':
-            if opt2orthogonal == 0:  # L2 正交
-                # |Uc*Uf|^2-->0; Uc 和 Uf 是两个列向量 形状为(*,1)
-                Un_dot_Us = tf.multiply(UNN_Normal, alpha * UNN_Scale)
-                UNN_dot_UNN = tf.square(tf.reduce_mean(Un_dot_Us))
-            elif opt2orthogonal == 1:   # 逐点平方正交 |Uc*Uf|^2-->0 Uc 和 Uf 是两个列向量 形状为(*, 1)
-                # |Uc*Uf|^2-->0; Uc 和 Uf 是两个列向量 形状为(*,1)
-                Un_dot_Us = tf.multiply(UNN_Normal, alpha * UNN_Scale)
-                square_Un_dot_Us = tf.square(Un_dot_Us)
-                UNN_dot_UNN = tf.reduce_mean(square_Un_dot_Us)
-            elif opt2orthogonal == 2:
-                # |(grad Uc)*(grad Uf)|^2-->0   (grad Uc)*(grad Uf)是向量相乘(*,2)·(*,2)
-                dU_dot_dU = tf.multiply(dUNN_Normal, alpha * dUNN_Scale)
-                sum2dUdU = tf.reshape(tf.reduce_sum(dU_dot_dU, axis=-1), shape=[-1, 1])
-                norm2AdUdU = tf.square(sum2dUdU)
-                UNN_dot_UNN = tf.reduce_mean(norm2AdUdU)
-            else:  # |Uc*Uf|^2-->0 + |(grad Uc)*(grad Uf)|^2-->0
-                U_dot_U = tf.reshape(tf.square(tf.multiply(UNN_Normal, alpha * UNN_Scale)), shape=[-1, 1])
-                dU_dot_dU = tf.multiply(dUNN_Normal, alpha * dUNN_Scale)
-                sum2dUdU = tf.reshape(tf.reduce_sum(dU_dot_dU, axis=-1), shape=[-1, 1])
-                norm2AdUdU = tf.square(sum2dUdU)
-                UNN_dot_UNN = tf.reduce_mean(norm2AdUdU) + tf.reduce_mean(U_dot_U)
-        else:
-            UNN_dot_UNN = tf.constant(0.0)
+        if opt2orthogonal == 1:
+            # |Uc*Uf|^2-->0; Uc 和 Uf 是两个列向量 形状为(*,1)
+            Un_dot_Us = tf.multiply(UNN_Normal, alpha * UNN_Scale)
+            square_Un_dot_Us = tf.square(Un_dot_Us)
+            UNN_dot_UNN = tf.reduce_mean(square_Un_dot_Us)
+        elif opt2orthogonal == 2:
+            # |a(x)*(grad Uc)*(grad Uf)|^2-->0 a(x) 是 (*,1)的；(grad Uc)*(grad Uf)是向量相乘(*,2)·(*,2)
+            dU_dot_dU = tf.multiply(dUNN_Normal, alpha * dUNN_Scale)
+            sum2dUdU = tf.reshape(tf.reduce_sum(dU_dot_dU, axis=-1), shape=[-1, 1])
+            norm2AdUdU = tf.square(tf.multiply(a_eps, sum2dUdU))
+            UNN_dot_UNN = tf.reduce_mean(norm2AdUdU)
+        else:  # |Uc*Uf|^2-->0 + |a(x)*(grad Uc)*(grad Uf)|^2-->0
+            U_dot_U = tf.reshape(tf.square(tf.multiply(UNN_Normal, alpha * UNN_Scale)), shape=[-1, 1])
+            dU_dot_dU = tf.multiply(dUNN_Normal, alpha * dUNN_Scale)
+            sum2dUdU = tf.reshape(tf.reduce_sum(dU_dot_dU, axis=-1), shape=[-1, 1])
+            norm2AdUdU = tf.square(tf.multiply(a_eps, sum2dUdU))
+            UNN_dot_UNN = tf.reduce_mean(norm2AdUdU) + tf.reduce_mean(U_dot_U)
 
         return UNN, loss_it, UNN_dot_UNN
 
     def loss_it2Possion_Boltzmann(self, X=None, Aeps=None, if_lambda2Aeps=True, Kappa_eps=None, if_lambda2Kappa=True,
                                   fside=None, if_lambda2fside=True, loss_type='ritz_loss', p_index=2, alpha=0.1,
-                                  opt2use_orthogonal=True, opt2orthogonal=1):
+                                  opt2orthogonal=1):
         assert (X is not None)
         assert (fside is not None)
         assert (Aeps is not None)
@@ -233,8 +213,8 @@ class SD2NN(object):
         else:
             force_side = fside
 
-        UNN_Normal = self.DNN2Normal(X, scale=self.factor2low_freq)
-        UNN_Scale = self.DNN2Scale(X, scale=self.factor2high_freq)
+        UNN_Normal = self.DNN2Normal(X, scale=self.freq2Normal)
+        UNN_Scale = self.DNN2Scale(X, scale=self.freq2Scale)
 
         UNN = UNN_Normal + alpha * UNN_Scale
 
@@ -249,30 +229,23 @@ class SD2NN(object):
                            tf.multiply(tf.reshape(force_side, shape=[-1, 1]), UNN)
             loss_it = tf.reduce_mean(loss_it_ritz)
 
-        if opt2use_orthogonal == 'with_orthogonal':
-            if opt2orthogonal == 0:  # L2 正交
-                # |Uc*Uf|^2-->0; Uc 和 Uf 是两个列向量 形状为(*,1)
-                Un_dot_Us = tf.multiply(UNN_Normal, alpha * UNN_Scale)
-                UNN_dot_UNN = tf.square(tf.reduce_mean(Un_dot_Us))
-            elif opt2orthogonal == 1:   # 逐点平方正交 |Uc*Uf|^2-->0 Uc 和 Uf 是两个列向量 形状为(*, 1)
-                # |Uc*Uf|^2-->0; Uc 和 Uf 是两个列向量 形状为(*,1)
-                Un_dot_Us = tf.multiply(UNN_Normal, alpha * UNN_Scale)
-                square_Un_dot_Us = tf.square(Un_dot_Us)
-                UNN_dot_UNN = tf.reduce_mean(square_Un_dot_Us)
-            elif opt2orthogonal == 2:
-                # |(grad Uc)*(grad Uf)|^2-->0   (grad Uc)*(grad Uf)是向量相乘(*,2)·(*,2)
-                dU_dot_dU = tf.multiply(dUNN_Normal, alpha * dUNN_Scale)
-                sum2dUdU = tf.reshape(tf.reduce_sum(dU_dot_dU, axis=-1), shape=[-1, 1])
-                norm2AdUdU = tf.square(sum2dUdU)
-                UNN_dot_UNN = tf.reduce_mean(norm2AdUdU)
-            else:  # |Uc*Uf|^2-->0 + |(grad Uc)*(grad Uf)|^2-->0
-                U_dot_U = tf.reshape(tf.square(tf.multiply(UNN_Normal, alpha * UNN_Scale)), shape=[-1, 1])
-                dU_dot_dU = tf.multiply(dUNN_Normal, alpha * dUNN_Scale)
-                sum2dUdU = tf.reshape(tf.reduce_sum(dU_dot_dU, axis=-1), shape=[-1, 1])
-                norm2AdUdU = tf.square(sum2dUdU)
-                UNN_dot_UNN = tf.reduce_mean(norm2AdUdU) + tf.reduce_mean(U_dot_U)
-        else:
-            UNN_dot_UNN = tf.constant(0.0)
+        if opt2orthogonal == 1:
+            # |Uc*Uf|^2-->0; Uc 和 Uf 是两个列向量 形状为(*,1)
+            Un_dot_Us = tf.multiply(UNN_Normal, alpha * UNN_Scale)
+            square_Un_dot_Us = tf.square(Un_dot_Us)
+            UNN_dot_UNN = tf.reduce_mean(square_Un_dot_Us)
+        elif opt2orthogonal == 2:
+            # |a(x)*(grad Uc)*(grad Uf)|^2-->0 a(x) 是 (*,1)的；(grad Uc)*(grad Uf)是向量相乘(*,2)·(*,2)
+            dU_dot_dU = tf.multiply(dUNN_Normal, alpha * dUNN_Scale)
+            sum2dUdU = tf.reshape(tf.reduce_sum(dU_dot_dU, axis=-1), shape=[-1, 1])
+            norm2AdUdU = tf.square(tf.multiply(a_eps, sum2dUdU))
+            UNN_dot_UNN = tf.reduce_mean(norm2AdUdU)
+        else:  # |Uc*Uf|^2-->0 + |a(x)*(grad Uc)*(grad Uf)|^2-->0
+            U_dot_U = tf.reshape(tf.square(tf.multiply(UNN_Normal, alpha * UNN_Scale)), shape=[-1, 1])
+            dU_dot_dU = tf.multiply(dUNN_Normal, alpha * dUNN_Scale)
+            sum2dUdU = tf.reshape(tf.reduce_sum(dU_dot_dU, axis=-1), shape=[-1, 1])
+            norm2AdUdU = tf.square(tf.multiply(a_eps, sum2dUdU))
+            UNN_dot_UNN = tf.reduce_mean(norm2AdUdU) + tf.reduce_mean(U_dot_U)
 
         return UNN, loss_it, UNN_dot_UNN
 
@@ -290,7 +263,7 @@ class SD2NN(object):
         else:
             Ubd = Ubd_exact
 
-        UNN_bd = self.DNN2Normal(X_bd, scale=self.factor2low_freq)
+        UNN_bd = self.DNN2Normal(X_bd, scale=self.freq2Normal)
         loss_bd_square = tf.square(UNN_bd - Ubd)
         loss_bd = tf.reduce_mean(loss_bd_square)
         return loss_bd
@@ -302,7 +275,7 @@ class SD2NN(object):
         assert (lenght2X_shape == 2)
         assert (shape2X[-1] == 1)
 
-        UNN_bd = self.DNN2Scale(X_bd, scale=self.factor2high_freq)
+        UNN_bd = self.DNN2Scale(X_bd, scale=self.freq2Scale)
         loss_bd_square = tf.square(alpha*UNN_bd)
         loss_bd = tf.reduce_mean(loss_bd_square)
         return loss_bd
@@ -321,8 +294,8 @@ class SD2NN(object):
         else:
             Ubd = Ubd_exact
 
-        UNN_bd2Normal = self.DNN2Normal(X_bd, scale=self.factor2low_freq)
-        UNN_bd2Scale = self.DNN2Scale(X_bd, scale=self.factor2high_freq)
+        UNN_bd2Normal = self.DNN2Normal(X_bd, scale=self.freq2Normal)
+        UNN_bd2Scale = self.DNN2Scale(X_bd, scale=self.freq2Scale)
         UNN_bd = tf.add(UNN_bd2Normal, alpha*UNN_bd2Scale)
         loss_bd_square = tf.square(UNN_bd - Ubd)
         loss_bd = tf.reduce_mean(loss_bd_square)
@@ -340,8 +313,8 @@ class SD2NN(object):
         assert (lenght2X_shape == 2)
         assert (shape2X[-1] == 1)
 
-        UNN_Normal = self.DNN2Normal(X_points, scale=self.factor2low_freq)
-        UNN_Scale = alpha*self.DNN2Scale(X_points, scale=self.factor2high_freq)
+        UNN_Normal = self.DNN2Normal(X_points, scale=self.freq2Normal)
+        UNN_Scale = alpha*self.DNN2Scale(X_points, scale=self.freq2Scale)
         UNN = tf.add(UNN_Normal, UNN_Scale)
         return UNN_Normal, UNN_Scale, UNN
 
@@ -413,12 +386,12 @@ def solve_Multiscale_PDE(R):
             in_dim=input_dim, out_dim=out_dim, region_a=region_l, region_b=region_r, index2p=p_index, eps=epsilon,
             eqs_name=R['equa_name'])
 
-    model = SD2NN(input_dim=R['input_dim'], out_dim=1, hidden2Normal=R['hidden2normal'], hidden2Scale=R['hidden2scale'],
+    sd2nn = SD2NN(input_dim=R['input_dim'], out_dim=1, hidden2Normal=R['hidden2normal'], hidden2Scale=R['hidden2scale'],
                   Model_name2Normal=R['model2Normal'], Model_name2Scale=R['model2Scale'],
                   actIn_name2Normal=R['actHidden_name2Normal'], actHidden_name2Normal=R['actHidden_name2Normal'],
                   actOut_name2Normal='linear', actIn_name2Scale=R['actHidden_name2Scale'],
                   actHidden_name2Scale=R['actHidden_name2Scale'], actOut_name2Scale='linear', opt2regular_WB='L2',
-                  type2numeric='float32', factor2low_freq=R['factor2low_freq'], factor2high_freq=R['factor2high_freq'])
+                  type2numeric='float32', freq2Normal=R['freq2Normal'], freq2Scale=R['freq2Scale'])
 
     global_steps = tf.compat.v1.Variable(0, trainable=False)
     with tf.device('/gpu:%s' % (R['gpuNo'])):
@@ -431,34 +404,37 @@ def solve_Multiscale_PDE(R):
             in_learning_rate = tf.compat.v1.placeholder_with_default(input=1e-5, shape=[], name='lr')
 
             if R['PDE_type'] == 'general_Laplace':
-                UNN2train, Loss_it2NNs, UNN_dot_UNN = model.loss_it2Laplace(
+                UNN2train, Loss_it2NNs, UNN_dot_UNN = sd2nn.loss_it2Laplace(
                     X=X_it, fside=f, loss_type=R['loss_type'], alpha=using_scale2orthogonal,
-                    opt2orthogonal=R['opt2orthogonal'], with_orthogonal=R['opt2loss_udotu'])
+                    opt2orthogonal=R['opt2orthogonal'])
             elif R['PDE_type'] == 'pLaplace':
-                UNN2train, Loss_it2NNs, UNN_dot_UNN = model.loss_it2pLaplace(
+                UNN2train, Loss_it2NNs, UNN_dot_UNN = sd2nn.loss_it2pLaplace(
                     X=X_it, Aeps=A_eps, fside=f, loss_type=R['loss_type'], alpha=using_scale2orthogonal,
-                    opt2orthogonal=R['opt2orthogonal'], with_orthogonal=R['opt2loss_udotu'])
+                    opt2orthogonal=R['opt2orthogonal'])
             elif R['PDE_type'] == 'Possion_Boltzmann':
-                UNN2train, Loss_it2NNs, UNN_dot_UNN = model.loss_it2Possion_Boltzmann()
+                UNN2train, Loss_it2NNs, UNN_dot_UNN = sd2nn.loss_it2Possion_Boltzmann()
 
-            Loss2UNN_dot_UNN = UdotU_penalty * UNN_dot_UNN
+            if R['opt2loss_udotu'] == 'with_orthogonal':
+                Loss2UNN_dot_UNN = UdotU_penalty * UNN_dot_UNN
+            else:
+                Loss2UNN_dot_UNN = tf.constant(0.0)
 
             if R['opt2loss_bd'] == 'unified_boundary':
-                loss_bd2left = model.loss_bd2NormalAddScale(X_left, Ubd_exact=u_left, alpha=R['contrib2scale'])
-                loss_bd2right = model.loss_bd2NormalAddScale(X_right, Ubd_exact=u_right, alpha=R['contrib2scale'])
+                loss_bd2left = sd2nn.loss_bd2NormalAddScale(X_left, Ubd_exact=u_left, alpha=R['contrib2scale'])
+                loss_bd2right = sd2nn.loss_bd2NormalAddScale(X_right, Ubd_exact=u_right, alpha=R['contrib2scale'])
                 Loss_bd2NNs = bd_penalty * (loss_bd2left + loss_bd2right)
             else:
-                loss_bd2Normal_left = model.loss2Normal_bd(X_left, Ubd_exact=u_left)
-                loss_bd2Normal_right = model.loss2Normal_bd(X_right, Ubd_exact=u_right)
+                loss_bd2Normal_left = sd2nn.loss2Normal_bd(X_left, Ubd_exact=u_left)
+                loss_bd2Normal_right = sd2nn.loss2Normal_bd(X_right, Ubd_exact=u_right)
                 loss_bd2Normal = loss_bd2Normal_left + loss_bd2Normal_right
 
-                loss_bd2Scale_left = model.loss2Scale_bd(X_left, alpha=using_scale2boundary)
-                loss_bd2Scale_right = model.loss2Scale_bd(X_right, alpha=using_scale2boundary)
+                loss_bd2Scale_left = sd2nn.loss2Scale_bd(X_left, alpha=using_scale2boundary)
+                loss_bd2Scale_right = sd2nn.loss2Scale_bd(X_right, alpha=using_scale2boundary)
                 loss_bd2Scale = loss_bd2Scale_left + loss_bd2Scale_right
 
                 Loss_bd2NNs = bd_penalty*(loss_bd2Normal + loss_bd2Scale)
 
-            regularSum2WB = model.get_regularSum2WB()
+            regularSum2WB = sd2nn.get_regularSum2WB()
             PWB = penalty2WB * regularSum2WB
 
             Loss2NN = Loss_it2NNs + Loss_bd2NNs + Loss2UNN_dot_UNN + PWB
@@ -506,7 +482,7 @@ def solve_Multiscale_PDE(R):
             train_mse_NN = tf.reduce_mean(tf.square(U_true - UNN2train))
             train_rel_NN = train_mse_NN / tf.reduce_mean(tf.square(U_true))
 
-            UNN_Normal2test, UNN_Scale2test, UNN2test = model.evalue_MscaleDNN(X_points=X_it, alpha=R['contrib2scale'])
+            UNN_Normal2test, UNN_Scale2test, UNN2test = sd2nn.evalue_MscaleDNN(X_points=X_it, alpha=R['contrib2scale'])
 
     t0 = time.time()
     loss_it_all, loss_bd_all, loss_all, loss_udu_all, train_mse_all, train_rel_all = [], [], [], [], [], []
@@ -699,10 +675,10 @@ if __name__ == "__main__":
     R['loss_type'] = 'variational_loss'          # PDE变分
     # R['loss_type'] = 'variational_loss2'       # PDE变分
     # R['loss_type'] = 'L2_loss'                 # L2 loss
-
-    R['opt2orthogonal'] = 0                      # 0: L2-orthogonal(LO)  1: pointwise square orthogonal(PSO)  2:energy
-    # R['opt2orthogonal'] = 1                    # 0: L2-orthogonal(LO)  1: pointwise square orthogonal(PSO)  2:energy
-    # R['opt2orthogonal'] = 2                    # 0: L2-orthogonal(LO)  1: pointwise square orthogonal(PSO)  2:energy
+    
+    # R['opt2orthogonal'] = 0                    # 0: L2 opt2orthogonal+energy    1: opt2orthogonal    2:energy
+    R['opt2orthogonal'] = 1                      # 0: L2 opt2orthogonal+energy    1: opt2orthogonal    2:energy
+    # R['opt2orthogonal'] = 2                    # 0: L2 opt2orthogonal+energy    1: opt2orthogonal    2:energy
 
     # ---------------------------- Setup of DNN -------------------------------
     R['batch_size2interior'] = 3000              # 内部训练数据的批大小
@@ -839,25 +815,25 @@ if __name__ == "__main__":
         elif R['order2pLaplace_operator'] == 8 and R['epsilon'] == 0.01:
             R['hidden2scale'] = (250, 120, 80, 80, 60)                   # 1*250+250*120+120*80+80*80+80*60+60*1=51110
 
-    # R['factor2low_freq'] = np.arange(10, 100)
-    # R['factor2low_freq'] = np.concatenate(([1, 1, 1, 1, 1], np.arange(1, 26)), axis=0)
-    # R['factor2low_freq'] = np.concatenate(([1, 2, 3, 4, 5, 1, 2, 3, 4, 5], np.arange(1, 21)), axis=0)
-    # R['factor2low_freq'] = np.concatenate(([1, 2, 3, 4, 5, 1, 2, 3, 4, 5], np.arange(1, 26)), axis=0)
-    # R['factor2low_freq'] = np.concatenate(([1, 2, 3, 4, 5, 1, 2, 3, 4, 5], np.arange(1, 31)), axis=0)
-    # R['factor2low_freq'] = np.concatenate(([1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5], np.arange(5, 31)), axis=0)
-    R['factor2low_freq'] = np.arange(1, 41)*0.5
+    # R['freq2Normal'] = np.arange(10, 100)
+    # R['freq2Normal'] = np.concatenate(([1, 1, 1, 1, 1], np.arange(1, 26)), axis=0)
+    # R['freq2Normal'] = np.concatenate(([1, 2, 3, 4, 5, 1, 2, 3, 4, 5], np.arange(1, 21)), axis=0)
+    # R['freq2Normal'] = np.concatenate(([1, 2, 3, 4, 5, 1, 2, 3, 4, 5], np.arange(1, 26)), axis=0)
+    # R['freq2Normal'] = np.concatenate(([1, 2, 3, 4, 5, 1, 2, 3, 4, 5], np.arange(1, 31)), axis=0)
+    # R['freq2Normal'] = np.concatenate(([1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5], np.arange(5, 31)), axis=0)
+    R['freq2Normal'] = np.arange(1, 41)*0.5
 
     if R['model2Scale'] == 'Fourier_DNN':
-        # R['factor2high_freq'] = np.arange(11, 101)
-        R['factor2high_freq'] = np.arange(21, 111)
-        # R['factor2high_freq'] = np.arange(16, 101)
-        # R['factor2high_freq'] = np.arange(21, 101)
-        # R['factor2high_freq'] = np.arange(6, 105)
+        # R['freq2Scale'] = np.arange(11, 101)
+        R['freq2Scale'] = np.arange(21, 111)
+        # R['freq2Scale'] = np.arange(16, 101)
+        # R['freq2Scale'] = np.arange(21, 101)
+        # R['freq2Scale'] = np.arange(6, 105)
     else:
-        # R['factor2high_freq'] = np.arange(11, 101)
-        R['factor2high_freq'] = np.arange(21, 111)
-        # R['factor2high_freq'] = np.arange(6, 105)
-        # R['factor2high_freq'] = np.arange(1, 101)
+        # R['freq2Scale'] = np.arange(11, 101)
+        R['freq2Scale'] = np.arange(21, 111)
+        # R['freq2Scale'] = np.arange(6, 105)
+        # R['freq2Scale'] = np.arange(1, 101)
 
     # 激活函数的选择
     # R['actHidden_name2Normal'] = 'relu'
@@ -895,16 +871,8 @@ if __name__ == "__main__":
         # R['contrib2scale'] = 0.1
 
     R['opt2loss_udotu'] = 'with_orthogonal'
-    # R['opt2loss_udotu'] = 'without_orthogonal'
-
     # R['opt2loss_bd'] = 'unified_boundary'
     R['opt2loss_bd'] = 'individual_boundary'
-
-    R['contrib_scale2orthogonal'] = 'with_contrib'
-    # R['contrib_scale2orthogonal'] = 'without_contrib'
-
-    # R['contrib_scale2boundary'] = 'with_contrib'
-    R['contrib_scale2boundary'] = 'without_contrib'
 
     solve_Multiscale_PDE(R)
 
