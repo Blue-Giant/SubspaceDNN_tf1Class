@@ -32,7 +32,7 @@ class SD2NN(object):
                  Model_name2Scale='DNN', actIn_name2Normal='relu', actHidden_name2Normal='relu',
                  actOut_name2Normal='linear', actIn_name2Scale='relu', actHidden_name2Scale='relu',
                  actOut_name2Scale='linear', opt2regular_WB='L2', type2numeric='float32', freq2Normal=None,
-                 freq2Scale=None):
+                 freq2Scale=None, sFourier2Normal=1.0, sFourier2Scale=1.0):
         super(SD2NN, self).__init__()
         if 'DNN' == str.upper(Model_name2Normal):
             self.DNN2Normal = DNN_Class_base.Pure_Dense_Net(
@@ -45,7 +45,7 @@ class SD2NN(object):
                 actName2in=actIn_name2Normal, actName=actHidden_name2Normal, actName2out=actOut_name2Normal,
                 type2float=type2numeric, scope2W='W_Normal', scope2B='B_Normal', repeat_high_freq=False)
         elif 'FOURIER_DNN' == str.upper(Model_name2Normal):
-            self.DNN2Normal = DNN_Class_base.Dense_Fourier_Net(
+            self.DNN2Normal = DNN_Class_base.Dense_FourierNet(
                 indim=input_dim, outdim=out_dim, hidden_units=hidden2Normal, name2Model=Model_name2Normal,
                 actName2in=actIn_name2Normal, actName=actHidden_name2Normal, actName2out=actOut_name2Normal,
                 type2float=type2numeric, scope2W='W_Normal', scope2B='B_Normal', repeat_high_freq=False)
@@ -61,7 +61,7 @@ class SD2NN(object):
                 actName2in=actIn_name2Scale, actName=actHidden_name2Scale, actName2out=actOut_name2Scale,
                 type2float=type2numeric, scope2W='W_Scale', scope2B='B_Scale')
         elif 'FOURIER_DNN' == str.upper(Model_name2Scale):
-            self.DNN2Scale = DNN_Class_base.Dense_Fourier_Net(
+            self.DNN2Scale = DNN_Class_base.Dense_FourierNet(
                 indim=input_dim, outdim=out_dim, hidden_units=hidden2Scale, name2Model=Model_name2Scale,
                 actName2in=actIn_name2Scale, actName=actHidden_name2Scale, actName2out=actOut_name2Scale,
                 type2float=type2numeric, scope2W='W_Scale', scope2B='B_Scale')
@@ -76,6 +76,8 @@ class SD2NN(object):
         self.freq2Normal = freq2Normal
         self.freq2Scale = freq2Scale
         self.opt2regular_WB = opt2regular_WB
+        self.sFourier2Normal = sFourier2Normal
+        self.sFourier2Scale = sFourier2Scale
 
     def loss_it2Laplace(self, X=None, fside=None, if_lambda2fside=True, loss_type='ritz_loss', alpha=0.1,
                         opt2orthogonal=1):
@@ -94,8 +96,8 @@ class SD2NN(object):
         else:
             force_side = fside
 
-        UNN_Normal = self.DNN2Normal(X, scale=self.freq2Normal)
-        UNN_Scale = self.DNN2Scale(X, scale=self.freq2Scale)
+        UNN_Normal = self.DNN2Normal(X, scale=self.freq2Normal, sFourier=self.sFourier2Normal)
+        UNN_Scale = self.DNN2Scale(X, scale=self.freq2Scale, sFourier=self.sFourier2Scale)
 
         UNN = UNN_Normal + alpha * UNN_Scale
 
@@ -170,8 +172,8 @@ class SD2NN(object):
         else:
             force_side = fside
 
-        UNN_Normal = self.DNN2Normal(X, scale=self.freq2Normal)
-        UNN_Scale = self.DNN2Scale(X, scale=self.freq2Scale)
+        UNN_Normal = self.DNN2Normal(X, scale=self.freq2Normal, sFourier=self.sFourier2Normal)
+        UNN_Scale = self.DNN2Scale(X, scale=self.freq2Scale, sFourier=self.sFourier2Scale)
 
         UNN = UNN_Normal + alpha * UNN_Scale
 
@@ -236,8 +238,8 @@ class SD2NN(object):
         else:
             force_side = fside
 
-        UNN_Normal = self.DNN2Normal(X, scale=self.freq2Normal)
-        UNN_Scale = self.DNN2Scale(X, scale=self.freq2Scale)
+        UNN_Normal = self.DNN2Normal(X, scale=self.freq2Normal, sFourier=self.sFourier2Normal)
+        UNN_Scale = self.DNN2Scale(X, scale=self.freq2Scale, sFourier=self.sFourier2Scale)
 
         UNN = UNN_Normal + alpha * UNN_Scale
 
@@ -281,13 +283,13 @@ class SD2NN(object):
         else:
             Ubd = Ubd_exact
 
-        UNN_bd = self.DNN2Normal(X_bd, scale=self.freq2Normal)
+        UNN_bd = self.DNN2Normal(X_bd, scale=self.freq2Normal, sFourier=self.sFourier2Normal)
         loss_bd_square = tf.square(UNN_bd - Ubd)
         loss_bd = tf.reduce_mean(loss_bd_square)
         return loss_bd
 
     def loss2Scale_bd(self, X_bd=None, alpha=0.1):
-        UNN_bd = self.DNN2Scale(X_bd, scale=self.freq2Scale)
+        UNN_bd = self.DNN2Scale(X_bd, scale=self.freq2Scale, sFourier=self.sFourier2Scale)
         loss_bd_square = tf.square(alpha*UNN_bd)
         loss_bd = tf.reduce_mean(loss_bd_square)
         return loss_bd
@@ -301,7 +303,7 @@ class SD2NN(object):
         else:
             Ubd = Ubd_exact
 
-        UNN_bd2Normal = self.DNN2Normal(X_bd, scale=self.freq2Normal)
+        UNN_bd2Normal = self.DNN2Normal(X_bd, scale=self.freq2Normal, sFourier=self.sFourier2Normal)
         UNN_bd2Scale = self.DNN2Scale(X_bd, scale=self.freq2Scale)
         UNN_bd = tf.add(UNN_bd2Normal, alpha*UNN_bd2Scale)
         loss_bd_square = tf.square(UNN_bd - Ubd)
@@ -314,8 +316,8 @@ class SD2NN(object):
         return sum2WB
 
     def evalue_MscaleDNN(self, X_points=None, alpha=0.1):
-        UNN_Normal = self.DNN2Normal(X_points, scale=self.freq2Normal)
-        UNN_Scale = alpha*self.DNN2Scale(X_points, scale=self.freq2Scale)
+        UNN_Normal = self.DNN2Normal(X_points, scale=self.freq2Normal, sFourier=self.sFourier2Normal)
+        UNN_Scale = alpha*self.DNN2Scale(X_points, scale=self.freq2Scale, sFourier=self.sFourier2Scale)
         UNN = tf.add(UNN_Normal, UNN_Scale)
         return UNN_Normal, UNN_Scale, UNN
 
@@ -426,7 +428,8 @@ def solve_Multiscale_PDE(R):
                   actIn_name2Normal=R['actHidden_name2Normal'], actHidden_name2Normal=R['actHidden_name2Normal'],
                   actOut_name2Normal='linear', actIn_name2Scale=R['actHidden_name2Scale'],
                   actHidden_name2Scale=R['actHidden_name2Scale'], actOut_name2Scale='linear', opt2regular_WB='L2',
-                  type2numeric='float32', freq2Normal=R['freq2Normal'], freq2Scale=R['freq2Scale'])
+                  type2numeric='float32', freq2Normal=R['freq2Normal'], freq2Scale=R['freq2Scale'],
+                  sFourier2Normal=R['sFourier2Normal'], sFourier2Scale=R['sFourier2Scale'])
 
     global_steps = tf.compat.v1.Variable(0, trainable=False)
     with tf.device('/gpu:%s' % (R['gpuNo'])):
@@ -585,7 +588,7 @@ def solve_Multiscale_PDE(R):
     config.gpu_options.allow_growth = True              # True是让TensorFlow在运行过程中动态申请显存，避免过多的显存占用。
     config.allow_soft_placement = True                  # 当指定的设备不存在时，允许选择一个存在的设备运行。比如gpu不存在，自动降到cpu上运行
     with tf.compat.v1.Session(config=config) as sess:
-        sess.run(tf.global_variables_initializer())
+        sess.run(tf.compat.v1.global_variables_initializer())
         tmp_lr = learning_rate
 
         for i_epoch in range(R['max_epoch'] + 1):
@@ -1000,6 +1003,9 @@ if __name__ == "__main__":
 
     # R['contrib_scale2boundary'] = 'with_contrib'
     R['contrib_scale2boundary'] = 'without_contrib'
+
+    R['sFourier2Normal'] = 1.0
+    R['sFourier2Scale'] = 0.5
 
     solve_Multiscale_PDE(R)
 

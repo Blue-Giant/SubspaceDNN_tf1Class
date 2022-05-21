@@ -1171,16 +1171,16 @@ if __name__ == "__main__":
     x = np.random.rand(batch_size, input_dim)
     freq = [1, 2, 3, 4, 5, 6, 7, 8]
     with tf.device('/gpu:%s' % ('0')):
-        with tf.variable_scope('vscope', reuse=tf.AUTO_REUSE):
-            X = tf.placeholder(tf.float32, name='XYit2train', shape=[None, input_dim])      # [N, D]
+        with tf.compat.v1.variable_scope('vscope', reuse=tf.compat.v1.AUTO_REUSE):
+            X = tf.compat.v1.placeholder(tf.float32, name='XYit2train', shape=[None, input_dim])      # [N, D]
             Y = model(X, scale=freq)
 
     # ConfigProto 加上allow_soft_placement=True就可以使用 gpu 了
-    config = tf.ConfigProto(allow_soft_placement=True)  # 创建sess的时候对sess进行参数配置
+    config = tf.compat.v1.ConfigProto(allow_soft_placement=True)  # 创建sess的时候对sess进行参数配置
     config.gpu_options.allow_growth = True  # True是让TensorFlow在运行过程中动态申请显存，避免过多的显存占用。
     config.allow_soft_placement = True  # 当指定的设备不存在时，允许选择一个存在的设备运行。比如gpu不存在，自动降到cpu上运行
-    with tf.Session(config=config) as sess:
+    with tf.compat.v1.Session(config=config) as sess:
         for i_epoch in range(5):
-            sess.run(tf.global_variables_initializer())
+            sess.run(tf.compat.v1.global_variables_initializer())
             y = sess.run(Y, feed_dict={X: x})
             print('Y:', y)
